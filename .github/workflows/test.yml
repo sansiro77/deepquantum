@@ -26,7 +26,10 @@ jobs:
         # echo "branch $BRANCH"
         BRANCH=$(git branch --contains ${{ github.ref }})
         echo "branch $BRANCH"
-        BRANCH2=$(git branch --contains ${{ github.ref }} | grep -w 'test2' || true)
+        BRANCH2=$(git branch -r --contains ${{ github.ref }} | grep -w 'origin/test2' || true)
+        echo "branch $BRANCH2"
+        BRANCH3=$(git branch -r --contains ${{ github.ref }})
+        echo "branch $BRANCH3"
         if [[ -n "$BRANCH2" ]]; then
             echo "This tag is on the main branch"
         else
