@@ -18,6 +18,8 @@ jobs:
       run: |
         LATEST_MAIN=$(git rev-parse origin/test2)
         TAG_COMMIT=$(git rev-list -n 1 ${{ github.ref }})
+        echo "Latest commit on main branch: $LATEST_MAIN"
+        echo "Tag commit: $TAG_COMMIT"
         if [[ "$LATEST_MAIN" == "$TAG_COMMIT" ]]; then
           echo "This tag is on the latest commit of the main branch"
         else
