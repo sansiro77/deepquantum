@@ -1,0 +1,22 @@
+run-name: ${{ github.actor }} triggered ${{ github.event_name }} on ${{ github.ref_name }}
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Build distribution 📦
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Check if tag is on main branch
+      run: |
+        echo "$(git branch --contains ${{ github.ref }})"
+        # if [[ $(git branch --contains ${{ github.ref }}) == *"main"* ]]; then
+        #   echo "This tag is on the main branch"
+        # else
+        #   echo "This tag is not on the main branch"
+        #   exit 1
+        # fi
