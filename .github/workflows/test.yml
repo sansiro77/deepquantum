@@ -18,12 +18,13 @@ jobs:
       run: |
         COMMIT=$(git rev-list -n 1 ${{ github.ref }})
         echo "$COMMIT"
+        echo "test1"
         BRANCH=$(git branch -r --contains $COMMIT | grep -w 'origin/test')
-        BRANCH2=$(git branch -r --contains $COMMIT | grep -w 'origin/test2')
-        echo "test"
+        # BRANCH2=$(git branch -r --contains $COMMIT | grep -w 'origin/test2')
+        echo "test2"
         echo "branch $BRANCH"
-        echo "branch $BRANCH2"
-        if [[ -n "$BRANCH2" ]]; then
+        # echo "branch $BRANCH2"
+        if [[ -n "$BRANCH" ]]; then
             echo "This tag is on the main branch"
         else
             echo "This tag is not on the main branch"
