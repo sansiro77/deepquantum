@@ -20,9 +20,10 @@ jobs:
         echo "$COMMIT"
         BRANCH=$(git branch -r --contains $COMMIT | grep -w 'origin/test')
         BRANCH2=$(git branch -r --contains $COMMIT | grep -w 'origin/test2')
+        echo "test"
         echo "branch $BRANCH"
         echo "branch $BRANCH2"
-        if [[ -n "$BRANCH" ]]; then
+        if [[ -n "$BRANCH2" ]]; then
             echo "This tag is on the main branch"
         else
             echo "This tag is not on the main branch"
