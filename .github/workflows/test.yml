@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    - uses: actions/checkout@v4
     - name: Check if tag is on main branch
       run: |
         echo "$(git branch --contains ${{ github.ref }})"
