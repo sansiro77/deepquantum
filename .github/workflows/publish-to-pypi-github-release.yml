@@ -18,8 +18,9 @@ jobs:
         fetch-depth: 0
     - name: Check if tag is on main branch
       run: |
-        COMMIT=$(git rev-list -n 1 ${{ github.ref }})
-        BRANCH=$(git branch -r --contains $COMMIT | grep -w 'origin/test' || true)
+        # COMMIT=$(git rev-list -n 1 ${{ github.ref }})
+        # BRANCH=$(git branch -r --contains $COMMIT | grep -w 'origin/test' || true)
+        BRANCH=$(git branch --contains ${{ github.ref }} | grep -w 'test' || true)
         if [[ -n "$BRANCH" ]]; then
             echo "This tag is on the main branch"
         else
