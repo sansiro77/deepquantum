@@ -22,7 +22,7 @@ jobs:
         echo "test1"
         echo "branch $BRANCH2"
         echo "test2"
-        BRANCH=$(git branch -r --contains $COMMIT | grep -w 'origin/test')
+        BRANCH=$(git branch -r --contains $COMMIT | grep -w 'origin/test' || true)
         echo "branch $BRANCH"
         if [[ -n "$BRANCH2" ]]; then
             echo "This tag is on the main branch"
