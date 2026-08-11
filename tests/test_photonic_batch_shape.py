@@ -1,3 +1,4 @@
+import pytest
 import torch
 
 import deepquantum as dq
@@ -36,6 +37,46 @@ def test_gaussian_batch_shape():
     assert tuple(state[0].shape) == (batch, 2, 2) and tuple(state[1].shape) == (batch, 2, 1)
     state = cir(data=data2)
     assert tuple(state[0].shape) == (batch, 2, 2) and tuple(state[1].shape) == (batch, 2, 1)
+
+
+def test_gaussian_get_prob_batch_shapes():
+    cir = dq.QumodeCircuit(2, 'vac', cutoff=3, backend='gaussian', detector='click')
+    cir.s(0, r=0.3)
+    cir.bs([0, 1], [0.4, 0.2])
+    cir.to(torch.double)
+    state = cir()
+    state_batch = [state[0].expand(2, -1, -1), state[1].expand(2, -1, -1)]
+    patterns = torch.tensor([[0, 0], [1, 0], [0, 1], [1, 1]])
+
+    probs = [
+        cir.get_prob(patterns[0], state),
+        cir.get_prob(patterns[0], state_batch),
+        cir.get_prob(patterns[:1], state),
+        cir.get_prob(patterns[:1], state_batch),
+        cir.get_prob(patterns, state),
+        cir.get_prob(patterns, state_batch),
+    ]
+    expected = torch.stack([cir.get_prob(pattern, state) for pattern in patterns])
+
+    assert [prob.shape for prob in probs] == [(), (2,), (1,), (2, 1), (4,), (2, 4)]
+    torch.testing.assert_close(probs[-2], expected)
+    torch.testing.assert_close(probs[-1], expected.expand(2, -1))
+
+
+@pytest.mark.parametrize('detector', ['pnrd', 'threshold'])
+def test_gaussian_get_prob_fixed_total_pattern_batch(detector):
+    cir = dq.QumodeCircuit(2, 'vac', cutoff=3, backend='gaussian', detector=detector)
+    cir.s(0, r=0.2)
+    cir.to(torch.double)
+    state = cir()
+    patterns = torch.tensor([[1, 0], [0, 1]])
+
+    batched = cir.get_prob(patterns, state)
+    expected = torch.stack([cir.get_prob(pattern, state) for pattern in patterns])
+
+    torch.testing.assert_close(batched, expected)
+    with pytest.raises(AssertionError, match='same total occupation'):
+        cir.get_prob(torch.tensor([[0, 0], [1, 0]]), state)
 
 
 def test_bosonic_shape():

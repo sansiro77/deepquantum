@@ -764,6 +764,33 @@ class QumodeCircuit(Operation):
                 op_m_tdm.wires = [self._unroll_dict[wire][-1] for wire in op_m.wires]
                 self._measurements_tdm.append(op_m_tdm)
 
+    def tdm_output_wires(self, nstep: int) -> torch.Tensor:
+        """Get output wires for each time step without building the global circuit.
+
+        Args:
+            nstep: The number of time steps.
+
+        Returns:
+            The output wires with shape ``(nstep, nmode)``.
+        """
+        if not self._with_delay:
+            raise ValueError('tdm_output_wires() requires at least one delay loop')
+        if not isinstance(nstep, int) or isinstance(nstep, bool) or nstep < 1:
+            raise ValueError('nstep must be a positive integer')
+        self._prepare_unroll_dict()
+        first = torch.tensor(
+            [self._unroll_dict[wire][-1] for wire in range(self.nmode)],
+            dtype=torch.long,
+        )
+        if nstep == 1:
+            return first.unsqueeze(0)
+        later = torch.arange(
+            self._nmode_tdm,
+            self._nmode_tdm + (nstep - 1) * self.nmode,
+            dtype=torch.long,
+        ).reshape(nstep - 1, self.nmode)
+        return torch.cat([first.unsqueeze(0), later], dim=0)
+
     def global_circuit(self, nstep: int, use_deepcopy: bool = False) -> 'QumodeCircuit':
         """Get the global circuit given the number of time steps.
 
@@ -1011,14 +1038,21 @@ class QumodeCircuit(Operation):
         """Get the probability of the final state related to the reference state.
 
         Args:
-            final_state: The final Fock basis state.
+            final_state: The final Fock basis state with shape ``(nmode,)``. For Gaussian backend,
+                multiple final states with shape ``(npattern, nmode)`` are also supported.
             refer_state: The initial Fock basis state or the final Gaussian state. Default: ``None``
             unitary: The unitary matrix. Default: ``None``
         """
         if not isinstance(final_state, torch.Tensor):
             final_state = torch.tensor(final_state, dtype=torch.long)
         result_name = 'clicks' if self.backend == 'gaussian' and self.detector == 'click' else 'photons'
-        assert max(final_state) < self.cutoff, f'The number of {result_name} must be less than cutoff'
+        assert final_state.numel() > 0, 'The final state must not be empty'
+        if self.backend == 'gaussian':
+            assert final_state.ndim in (1, 2), 'The final state must be 1D or 2D for Gaussian backend'
+        else:
+            assert final_state.ndim == 1, 'The final state must be 1D'
+        assert torch.all(final_state >= 0), f'The number of {result_name} must be non-negative'
+        assert final_state.max() < self.cutoff, f'The number of {result_name} must be less than cutoff'
         if self.backend == 'fock':
             if refer_state is None:
                 refer_state = self._prepare_init_state(self.init_state.state)
@@ -1084,9 +1118,17 @@ class QumodeCircuit(Operation):
         return prob
 
     def _get_prob_gaussian(self, final_state: Any, state: Any = None) -> torch.Tensor:
-        """Get the batched probabilities of the final state for Gaussian backend."""
+        """Get probabilities of one or multiple final states for Gaussian backend."""
         if not isinstance(final_state, torch.Tensor):
             final_state = torch.tensor(final_state, dtype=torch.long)
+        assert final_state.ndim in (1, 2)
+        is_single = final_state.ndim == 1
+        final_states = final_state.unsqueeze(0) if is_single else final_state
+        if self.detector in ('pnrd', 'threshold') and not is_single:
+            totals = final_states.sum(dim=-1)
+            assert torch.all(totals == totals[0]), (
+                'PNRD and threshold patterns in one batch must have the same total occupation'
+            )
         if state is None:
             cov = self._cov
             mean = self._mean
@@ -1103,9 +1145,14 @@ class QumodeCircuit(Operation):
         batch = cov.shape[0]
         probs = []
         for i in range(batch):
-            prob = self._get_probs_gaussian_helper(final_state, cov=cov[i], mean=mean[i], detector=self.detector)[0]
+            prob = self._get_probs_gaussian_helper(final_states, cov=cov[i], mean=mean[i], detector=self.detector)
             probs.append(prob)
-        return torch.stack(probs).squeeze()
+        probs = torch.stack(probs)
+        if batch == 1:
+            probs = probs[0]
+        if is_single:
+            probs = probs[..., 0]
+        return probs
 
     def _get_probs_gaussian_helper(
         self,
