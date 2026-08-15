@@ -62,6 +62,10 @@ def test_gaussian_get_prob_batch_shapes():
     torch.testing.assert_close(probs[-2], expected)
     torch.testing.assert_close(probs[-1], expected.expand(2, -1))
 
+    multiplexed = torch.tensor([[2, 0], [0, 2], [2, 1], [1, 2], [0, 0]])
+    expected = torch.stack([cir.get_prob(pattern, state) for pattern in multiplexed])
+    torch.testing.assert_close(cir.get_prob(multiplexed, state), expected)
+
 
 @pytest.mark.parametrize('detector', ['pnrd', 'threshold'])
 def test_gaussian_get_prob_fixed_total_pattern_batch(detector):
