@@ -796,6 +796,7 @@ class QumodeCircuit(Operation):
         nstep: int,
         time_steps: int | slice | list[int] | torch.Tensor,
         wires: int | list[int] | torch.Tensor | None = None,
+        data: torch.Tensor | None = None,
     ) -> list[torch.Tensor]:
         """Get the Gaussian state of selected TDM outputs.
 
@@ -803,14 +804,15 @@ class QumodeCircuit(Operation):
             nstep: The number of time steps.
             time_steps: The selected time steps in ascending order.
             wires: The selected spatial wires. Default: ``None``
+            data: Time-major encoded data with shape ``(nstep * ndata,)`` or
+                ``(batch, nstep * ndata)``. Default: ``None``
 
         Returns:
             The covariance matrix and mean vector in time-major order, with shapes
-            ``(1, 2 * nselected, 2 * nselected)`` and ``(1, 2 * nselected, 1)``.
+            ``(batch, 2 * nselected, 2 * nselected)`` and ``(batch, 2 * nselected, 1)``.
         """
         assert self.backend == 'gaussian', 'tdm_substate() requires Gaussian backend'
         assert self._with_delay, 'tdm_substate() requires at least one delay loop'
-        assert self.ndata == 0, 'tdm_substate() does not support encoded gates'
         assert isinstance(nstep, int) and not isinstance(nstep, bool) and nstep > 0, 'nstep must be a positive integer'
         if isinstance(time_steps, slice):
             time_steps = torch.arange(nstep)[time_steps]
@@ -826,6 +828,29 @@ class QumodeCircuit(Operation):
         assert torch.all((wires >= 0) & (wires < self.nmode)), 'wires must lie in [0, nmode)'
         assert torch.unique(wires).numel() == wires.numel(), 'wires must be unique'
 
+        if self.ndata == 0:
+            assert data is None, 'data must be None when the circuit has no encoders'
+            states = [self._tdm_substate_gaussian(nstep, time_steps, wires)]
+        else:
+            assert isinstance(data, torch.Tensor), 'data is required when the circuit has encoders'
+            if data.ndim == 1:
+                data = data.unsqueeze(0)
+            assert data.ndim == 2 and data.shape[1] == nstep * self.ndata, (
+                f'data must have shape ({nstep * self.ndata},) or (batch, {nstep * self.ndata})'
+            )
+            circuit = deepcopy(self)
+            states = [circuit._tdm_substate_gaussian(nstep, time_steps, wires, sample) for sample in data]
+        cov, mean = zip(*states, strict=True)
+        return [torch.stack(cov), torch.stack(mean)]
+
+    def _tdm_substate_gaussian(
+        self,
+        nstep: int,
+        time_steps: torch.Tensor,
+        wires: torch.Tensor,
+        data: torch.Tensor | None = None,
+    ) -> list[torch.Tensor]:
+        """Get one encoded Gaussian TDM substate."""
         self._prepare_unroll_dict()
         loop_wires = []
         for values in self._unroll_dict.values():
@@ -842,6 +867,8 @@ class QumodeCircuit(Operation):
         nretained = 0
 
         for step in range(nstep):
+            if data is not None:
+                self.encode(data[step * self.ndata : (step + 1) * self.ndata])
             old_nmode = nloop + nretained
             step_nmode = old_nmode + self.nmode
             old_idx = torch.cat(
@@ -883,7 +910,7 @@ class QumodeCircuit(Operation):
 
         retained = torch.arange(nloop, nloop + nretained, device=cov.device)
         retained_xp = torch.cat([retained, retained + nloop + nretained])
-        return [cov[retained_xp[:, None], retained_xp].unsqueeze(0), mean[retained_xp].unsqueeze(0)]
+        return [cov[retained_xp[:, None], retained_xp], mean[retained_xp]]
 
     def global_circuit(self, nstep: int, use_deepcopy: bool = False) -> 'QumodeCircuit':
         """Get the global circuit given the number of time steps.
